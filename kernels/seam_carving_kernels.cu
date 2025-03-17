@@ -20,13 +20,13 @@ extern "C" __global__ void Rgb2GrayWithPadding(unsigned char* img, unsigned char
         return;
     }
 
-    // Maps to the correct section of the original image
+    // Maps to a section of the original image
     int idx = ((y-1) * width + (x - 1)) * 3;
     unsigned char red = img[idx];
     unsigned char green = img[idx + 1];
     unsigned char blue = img[idx + 2];
 
-    // calculates grayscale value based on RGB for a pixel
+    // calculates grayscale value based on RGB values for a pixel
     float grayVal = 0.2989f * red + 0.5870f * green + 0.1140f * blue;
 
     // Writes the grayscale value back
@@ -168,7 +168,7 @@ extern "C" __global__ void cumulativeMapBackward(float* energyMap, float* cumula
       }
 
       // At the rightmost position
-      else if(tid + 1 % imageWidth == 0){
+      else if((tid + 1) % imageWidth == 0){
         energyToAdd = fminf(cumulativeEnergyMap[elementAbove], cumulativeEnergyMap[elementAbove - 1]);
       }
 
@@ -184,21 +184,35 @@ extern "C" __global__ void cumulativeMapBackward(float* energyMap, float* cumula
     }
 }
 
-extern "C" __global__ void computeSeamRemovedGrayImage(int * seamIndices, float* gray, float* gray_new,
-                                                      int imageWidth, int imageHeight){
+// extern "C" __global__ void removeVerticalSeamAndInsertPadding(int* seamIndices, float* gray, float* grayNew,
+//                                                       int energyMapWidth, int energyMapHeight){
 
-  int tid = threadIdx.x + blockDim.x * blockIdx.x;
-  if (tid>= imageWidth * imageHeight) return;
+//     int x = threadIdx.x + blockIdx.x * blockDim.x;
+//     int y = threadIdx.y + blockIdx.y * blockDim.y;
 
-  int row = tid / imageWidth;
-  int col = tid % imageWidth;
-  int seamIdx = seamIndices[row];
+//     // Checks if the thread accesses an out of bounds index
+//     if(x > energyMapWidth || y > energyMapHeight + 1){
+//         return;
+//     }
+    
+//     // Position in the 1D array the present thread is responsible for
+//     int grayNewIdx = y * energyMapWidth + x;
+    
+//     // Indices that form the padding set to 0
+//     if(x == 0 || y == 0 || y == energyMapHeight + 1 ){
+//         grayNew[grayNewIdx] = 0.0;
+//         return;
+//     }
 
-  if (col >= seamIdx){
-    gray_new[tid - 1] = gray[tid];
-  }
-  else{
-    gray_new[tid - imageHeight] = gray[tid];
-  }
-  
-}
+//     // Gets the seam index pertaining to the present thread's y
+//     int k = seamIndices[y - 1];
+//     int grayOldIdx = y * (energyMapWidth + 1) + x;
+    
+//     // If x < k, no shift is needed
+//     if(x < k){
+//         grayNew[grayNewIdx] = gray[grayOldIdx];     
+//     }   
+//     else{
+//         grayNew[grayNewIdx] = gray[grayOldIdx + 1];
+//     }
+// }
