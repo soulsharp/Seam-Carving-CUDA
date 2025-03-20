@@ -1,4 +1,4 @@
-from utils import (
+from utils.utils import (
     parse_arguments,
     load_image,
     initialize_cuda_kernels,
@@ -17,7 +17,7 @@ def main():
 
     run_kernels(kernels, device_buffers, image_width, image_height)
     find_seam(kernels, buffers, device_buffers, image_width, image_height)
-    remove_seam(kernels, device_buffers, image_width, image_height)
+    remove_seam(kernels, buffers, device_buffers, image_width, image_height)
 
 if __name__ == "__main__":
     main()

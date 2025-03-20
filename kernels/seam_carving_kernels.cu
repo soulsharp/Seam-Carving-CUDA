@@ -184,7 +184,7 @@ extern "C" __global__ void cumulativeMapBackward(float* energyMap, float* cumula
     }
 }
 
-extern "C" __global__ void removeVerticalSeamAndInsertPadding(int* seamIndices, float* gray, float* grayNew,
+extern "C" __global__ void removeVerticalSeamAndInsertPadding(int* seamIndices, unsigned char* gray, unsigned char* grayNew,
                                                             int energyMapWidth, int energyMapHeight) {
     int x = threadIdx.x + blockIdx.x * blockDim.x;
     int y = threadIdx.y + blockIdx.y * blockDim.y;

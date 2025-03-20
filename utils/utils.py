@@ -24,10 +24,6 @@ def parse_arguments():
 
     return parser.parse_args()
 
-def min_index(idx1, idx2, arr):
-    return idx1 if arr[idx1] < arr[idx2] else idx2
-
-
 @nb.njit(nb.int32[:](nb.int32, nb.float32[:, :]), cache=True)
 def get_backward_seam_from_idx(backtrack_idx, energy):
     """Finds the min energy seam given a starting idx."""
@@ -36,6 +32,10 @@ def get_backward_seam_from_idx(backtrack_idx, energy):
     current_idx = backtrack_idx
     seam = np.zeros(image_height, dtype=np.int32)
     seam[image_height-1] = backtrack_idx
+    
+    # Helper function
+    def min_index(idx1, idx2, arr):
+        return idx1 if arr[idx1] < arr[idx2] else idx2
 
     for i in range(image_height - 2, -1, -1):
 
@@ -111,7 +111,7 @@ def allocate_memory(image_height, image_width, img):
         "sobel_y": np.zeros((image_height, image_width), dtype=np.float32),
         "energy_map": np.zeros((image_height, image_width), dtype=np.float32),
         "cumulative_map": np.zeros((image_height, image_width), dtype=np.float32),
-        "dummy_output": np.zeros((image_height, image_width), dtype=np.int32),
+        "dummy_output": np.zeros((image_height + 2, image_width + 1), dtype=np.uint8),
         "min_row": np.zeros(image_width, dtype=np.float32),
         "seam_indices": np.zeros(image_height, dtype=np.int32),
         "min_indices": np.zeros(math.ceil(image_width / 1024), dtype=np.int32),
@@ -124,7 +124,7 @@ def allocate_memory(image_height, image_width, img):
     # Transfers memory from host to device
     cuda.memcpy_htod(device_buffers["image"], img)
     for key, d_mem in device_buffers.items():
-        if key != "image":
+        if key != "image" and key != "seam_indices":
             cuda.memcpy_htod(d_mem, buffers[key])
 
     return buffers, device_buffers 
@@ -176,11 +176,22 @@ def find_seam(kernels, buffers, device_buffers, image_width, image_height):
                                  block=(1024, 1, 1), grid=(math.ceil(image_width / 1024), 1),
                                  shared=image_height * 4)
     cuda.Context.synchronize()
-    print(f"Cumulative Energy executed in {time.time() - start_time:.4f}s")
+    print(f"Cumulative Energy kernel executed in {time.time() - start_time:.4f}s")
 
     cuda.memcpy_dtoh(buffers["cumulative_map"], device_buffers["cumulative_map"])
+    buffers["min_row"] = buffers["cumulative_map"][image_height - 1, :]
+    cuda.memcpy_htod(device_buffers["min_row"], buffers["min_row"])
 
     # Finds backtracking index in the last row of the cumulative energy map
+    start_time = time.time()
+    kernels["find_min"](device_buffers["min_row"], device_buffers["min_indices"],
+                         np.int32(image_width),
+                         block=(1024, 1, 1), grid=(math.ceil(image_width / 1024), 1),)
+    cuda.Context.synchronize()
+    print(f"Find min kernel executed in {time.time() - start_time:.4f}s")
+
+    cuda.memcpy_dtoh(buffers["min_indices"], device_buffers["min_indices"])
+
     min_idx = np.argmin(buffers["cumulative_map"][image_height - 1, :])
     seam = get_backward_seam_from_idx(min_idx, buffers["cumulative_map"].reshape(image_height, image_width))
     
@@ -188,7 +199,7 @@ def find_seam(kernels, buffers, device_buffers, image_width, image_height):
     cuda.memcpy_htod(device_buffers["seam_indices"], seam)
 
 
-def remove_seam(kernels, device_buffers, image_width, image_height):
+def remove_seam(kernels, buffers, device_buffers, image_width, image_height):
     """Removes the minimum energy seam."""
     start_time = time.time()
     kernels["remove_seam"](device_buffers["seam_indices"], device_buffers["gray_image"],
@@ -196,4 +207,4 @@ def remove_seam(kernels, device_buffers, image_width, image_height):
                            block=(16, 16, 1), grid=((image_width + 15) // 16, (image_height + 15) // 16))
     cuda.Context.synchronize()
     print(f"Seam removal executed in {time.time() - start_time:.4f}s")
-
+    
