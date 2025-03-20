@@ -10,6 +10,8 @@ from utils.pycuda_utils import get_backward_seam_from_idx
 
 if __name__ == "__main__":
 
+    import pycuda.autoinit
+
     parser = argparse.ArgumentParser()
     image_name = "joel-filipe-QwoNAhbmLLo-unsplash.jpg"
     default_image_path = os.path.join(os.getcwd(),
@@ -36,13 +38,9 @@ if __name__ == "__main__":
 
     # Loads img to be resized
     img, image_height, image_width = load_image(img_path)
-    
-    print("... Here")
 
     # Loads source kernels' file
     ker = get_cuda_kernels_src_file()
-
-    print("Here")
 
     # Gets cuda_kernels 
     rgb_to_gray_with_padding_fn = ker.get_function("Rgb2GrayWithPadding")
@@ -52,8 +50,6 @@ if __name__ == "__main__":
     cumulative_energy_fn_backward = ker.get_function("cumulativeMapBackward")
     min_element_row_fn = ker.get_function("findMinInThreadBlock")
     remove_seam_fn = ker.get_function("removeVerticalSeamAndInsertPadding")
-
-    print("There")
 
     # Thread Launch Config for rgb2gray and sobel kernels
     threadsPerBlock = (16, 16, 1)
@@ -76,7 +72,7 @@ if __name__ == "__main__":
 
     # Arrays on host 
     gray_image = np.zeros((image_height + 2, image_width + 2), dtype=np.uint8)
-    gray_image_new = np.zeros((image_height + 1, image_width + 1), dtype=np.uint8)
+    gray_image_new = np.zeros((image_height + 2, image_width + 1), dtype=np.uint8)
     sobel_x = np.zeros((image_height, image_width), dtype=np.float32)
     sobel_y = np.zeros((image_height, image_width), dtype=np.float32)
     energy_map = np.zeros((image_height, image_width), dtype=np.float32)
@@ -203,13 +199,13 @@ if __name__ == "__main__":
     print(f"Time taken = {end_time - start_time}s")
     print(f"Total time for the pipeline core = {end_time - start}")
 
-    # remove_seam_fn(d_seam_indices, d_gray, d_gray_new, np.int32(image_width), np.int32(image_height), 
-    #                block = threadsPerBlock,
-    #                grid = numBlocks) 
+    remove_seam_fn(d_seam_indices, d_gray, d_gray_new, np.int32(image_width), np.int32(image_height), 
+                   block = threadsPerBlock,
+                   grid = numBlocks) 
     
-    # cuda.Context.synchronize()
+    cuda.Context.synchronize()
     
-    # gray_removed = np.zeros((image_height + 2, image_width + 1))
-    # cuda.memcpy_dtoh(gray_removed, d_gray_new)
+    gray_removed = np.zeros((image_height + 2, image_width + 1))
+    cuda.memcpy_dtoh(gray_removed, d_gray_new)
 
     print(image_height, image_width, gray_image.shape)

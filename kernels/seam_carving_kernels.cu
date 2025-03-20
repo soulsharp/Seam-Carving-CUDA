@@ -184,35 +184,36 @@ extern "C" __global__ void cumulativeMapBackward(float* energyMap, float* cumula
     }
 }
 
-// extern "C" __global__ void removeVerticalSeamAndInsertPadding(int* seamIndices, float* gray, float* grayNew,
-//                                                       int energyMapWidth, int energyMapHeight){
+extern "C" __global__ void removeVerticalSeamAndInsertPadding(int* seamIndices, float* gray, float* grayNew,
+                                                            int energyMapWidth, int energyMapHeight) {
+    int x = threadIdx.x + blockIdx.x * blockDim.x;
+    int y = threadIdx.y + blockIdx.y * blockDim.y;
 
-//     int x = threadIdx.x + blockIdx.x * blockDim.x;
-//     int y = threadIdx.y + blockIdx.y * blockDim.y;
+    // Bounds check
+    if (x >= energyMapWidth + 1 || y >= energyMapHeight + 2) {
+        return;
+    }
 
-//     // Checks if the thread accesses an out of bounds index
-//     if(x > energyMapWidth || y > energyMapHeight + 1){
-//         return;
-//     }
-    
-//     // Position in the 1D array the present thread is responsible for
-//     int grayNewIdx = y * energyMapWidth + x;
-    
-//     // Indices that form the padding set to 0
-//     if(x == 0 || y == 0 || y == energyMapHeight + 1 ){
-//         grayNew[grayNewIdx] = 0.0;
-//         return;
-//     }
+    // Index in grayNew where this thread writes
+    int grayNewIdx = y * (energyMapWidth + 1) + x;
 
-//     // Gets the seam index pertaining to the present thread's y
-//     int k = seamIndices[y - 1];
-//     int grayOldIdx = y * (energyMapWidth + 1) + x;
-    
-//     // If x < k, no shift is needed
-//     if(x < k){
-//         grayNew[grayNewIdx] = gray[grayOldIdx];     
-//     }   
-//     else{
-//         grayNew[grayNewIdx] = gray[grayOldIdx + 1];
-//     }
-// }
+    // Sets padding outside the actual content region to 0
+    if (x == 0 || x == energyMapWidth || y == 0 || y == energyMapHeight + 1) {
+        grayNew[grayNewIdx] = 0.0;
+        return;
+    }
+
+    // Gets seam index for the current row (adjusted for padding)
+    int k = seamIndices[y - 1];
+
+    // Computes the corresponding index in gray
+    int grayOldIdx = y * (energyMapWidth + 2) + x;
+
+    // Pixels before the seam pixel remain the same, pixels after get shifted to the left by 1
+    if (x <= k) {
+        grayNew[grayNewIdx] = gray[grayOldIdx];
+    }
+    else {
+        grayNew[grayNewIdx] = gray[grayOldIdx + 1];
+    }
+}

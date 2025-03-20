@@ -1,5 +1,7 @@
 import cv2 as cv
+import pycuda.driver as cuda
 from pycuda.compiler import SourceModule
+import pycuda.autoinit
 import os
 import numba as nb
 import numpy as np
@@ -25,11 +27,8 @@ def load_image(image_path):
 def get_cuda_kernels_src_file():
     kernel_path = os.path.join(os.getcwd(),
                                "kernels", "seam_carving_kernels.cu")
-    with open(kernel_path, "r", encoding="utf-8") as f:
+    with open(kernel_path, "r") as f:
         kernels = f.read()
-
-    print(kernel_path)
-
     ker = SourceModule(kernels)
 
     return ker
