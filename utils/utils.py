@@ -95,6 +95,7 @@ def initialize_cuda_kernels():
         "cumulative_energy": ker.get_function("cumulativeMapBackward"),
         "find_min": ker.get_function("findMinInThreadBlock"),
         "remove_seam": ker.get_function("removeVerticalSeamAndInsertPadding"),
+        "update_energy_map": ker.get_function("updateEnergyMap"),
     }
 
 
@@ -111,7 +112,7 @@ def allocate_memory(image_height, image_width, img):
         "sobel_y": np.zeros((image_height, image_width), dtype=np.float32),
         "energy_map": np.zeros((image_height, image_width), dtype=np.float32),
         "cumulative_map": np.zeros((image_height, image_width), dtype=np.float32),
-        "dummy_output": np.zeros((image_height + 2, image_width + 1), dtype=np.uint8),
+        "gray_temp": np.zeros((image_height + 2, image_width + 1), dtype=np.uint8),
         "min_row": np.zeros(image_width, dtype=np.float32),
         "seam_indices": np.zeros(image_height, dtype=np.int32),
         "min_indices": np.zeros(math.ceil(image_width / 1024), dtype=np.int32),
@@ -132,7 +133,7 @@ def allocate_memory(image_height, image_width, img):
 
 def run_kernels(kernels, device_buffers, image_width, image_height):
     """Runs CUDA kernels in sequence."""
-    threadsPerBlock = (16, 16, 1)
+    threadsPerBlock = (32, 32, 1)
     numBlocks = ((image_width + 2 + threadsPerBlock[0] - 1) // threadsPerBlock[0], 
                 (image_height + 2 + threadsPerBlock[1] - 1) // threadsPerBlock[1], 1)
 
@@ -171,7 +172,6 @@ def find_seam(kernels, buffers, device_buffers, image_width, image_height):
     # Gets the cumulative energy map
     start_time = time.time()
     kernels["cumulative_energy"](device_buffers["energy_map"], device_buffers["cumulative_map"],
-                                 device_buffers["dummy_output"],
                                  np.int32(image_height), np.int32(image_width),
                                  block=(1024, 1, 1), grid=(math.ceil(image_width / 1024), 1),
                                  shared=image_height * 4)
@@ -199,12 +199,23 @@ def find_seam(kernels, buffers, device_buffers, image_width, image_height):
     cuda.memcpy_htod(device_buffers["seam_indices"], seam)
 
 
-def remove_seam(kernels, buffers, device_buffers, image_width, image_height):
+def remove_seam(kernels, device_buffers, image_width, image_height):
     """Removes the minimum energy seam."""
     start_time = time.time()
     kernels["remove_seam"](device_buffers["seam_indices"], device_buffers["gray_image"],
-                           device_buffers["gray_image_new"], np.int32(image_width), np.int32(image_height),
-                           block=(16, 16, 1), grid=((image_width + 15) // 16, (image_height + 15) // 16))
+                           device_buffers["gray_image_new"], device_buffers["gray_temp"], 
+                           np.int32(image_width), np.int32(image_height),
+                           block=(32, 32, 1), grid=((image_width + 31) // 32, (image_height + 31) // 32))
     cuda.Context.synchronize()
     print(f"Seam removal executed in {time.time() - start_time:.4f}s")
+
+def update_energy_map(kernels, device_buffers, image_width, image_height):
+    """Updates the energy map after removal of a seam"""
+    start_time = time.time()
+    kernels["update_energy_map"](device_buffers["seam_indices"], device_buffers["gray_image"],
+                           device_buffers["sobel_x"], device_buffers["sobel_y"], device_buffers["energy_map"], 
+                           np.int32(image_width), np.int32(image_height),
+                           block=(3, 32, 1), grid=(1, (image_height + 31) // 32))
+    cuda.Context.synchronize()
+    print(f"Update energy map executed in {time.time() - start_time:.4f}s")
     

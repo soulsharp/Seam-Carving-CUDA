@@ -55,8 +55,9 @@ extern "C" __global__ void SobelHorizontal(unsigned char* grayImg, float* sobelX
     // Sobel calculation
     float topVal = -grayImg[grayTopIdx - 1] - 2 * grayImg[grayTopIdx] - grayImg[grayTopIdx + 1];
     float lowVal =  grayImg[grayLowIdx - 1] + 2 * grayImg[grayLowIdx] + grayImg[grayLowIdx + 1];
-
     float sobelVal = fabsf(topVal + lowVal);
+
+    // Writes to sobelX map
     sobelX[idx] = sobelVal;
 }
 
@@ -86,8 +87,8 @@ extern "C" __global__ void SobelVertical(unsigned char* grayImg, float* sobel_y,
     // Accessing mid idx of every row involved in the Sobel operation
     int grayTopIdx = (paddedY - 1) * paddedWidth + paddedX;
     int grayLowIdx = (paddedY + 1) * paddedWidth + paddedX;
-
-    // The contribution of the middle row is 0 but is included for readability
+    
+    // The contribution of the middle column is 0 but is included for readability
     float topVal = -grayImg[grayTopIdx - 1] + 0 + grayImg[grayTopIdx];
     float mid_val = -2 * grayImg[grayLowIdx - 1] + 0 + 2 * grayImg[grayLowIdx];
     float lowVal = -grayImg[grayLowIdx - 1] + 0 + grayImg[grayLowIdx];
@@ -146,7 +147,7 @@ extern "C" __global__ void findMinInThreadBlock(float* inputRow, int* minIndices
     }
 }
 
-extern "C" __global__ void cumulativeMapBackward(float* energyMap, float* cumulativeEnergyMap, int* dummyOutput,
+extern "C" __global__ void cumulativeMapBackward(float* energyMap, float* cumulativeEnergyMap,
                                 int imageHeight, int imageWidth){
 
     int tid = threadIdx.x + blockDim.x * blockIdx.x;
@@ -185,7 +186,7 @@ extern "C" __global__ void cumulativeMapBackward(float* energyMap, float* cumula
 }
 
 extern "C" __global__ void removeVerticalSeamAndInsertPadding(int* seamIndices, unsigned char* gray, unsigned char* grayNew,
-                                                            int energyMapWidth, int energyMapHeight) {
+                                                            unsigned char* grayTemp, int energyMapWidth, int energyMapHeight) {
     int x = threadIdx.x + blockIdx.x * blockDim.x;
     int y = threadIdx.y + blockIdx.y * blockDim.y;
 
@@ -200,6 +201,7 @@ extern "C" __global__ void removeVerticalSeamAndInsertPadding(int* seamIndices, 
     // Sets padding outside the actual content region to 0
     if (x == 0 || x == energyMapWidth || y == 0 || y == energyMapHeight + 1) {
         grayNew[grayNewIdx] = 0.0;
+        grayTemp[grayNewIdx] = 0.0;
         return;
     }
 
@@ -212,8 +214,64 @@ extern "C" __global__ void removeVerticalSeamAndInsertPadding(int* seamIndices, 
     // Pixels before the seam pixel remain the same, pixels after get shifted to the left by 1
     if (x <= k) {
         grayNew[grayNewIdx] = gray[grayOldIdx];
+        grayTemp[grayNewIdx] = gray[grayOldIdx];
     }
     else {
         grayNew[grayNewIdx] = gray[grayOldIdx + 1];
+        grayTemp[grayNewIdx] = gray[grayOldIdx + 1];
     }
+}
+
+extern "C" __global__ void updateEnergyMap(int* seamIndices, unsigned char* grayImg, 
+                                         float* sobelX, float* sobelY, float* energyMap, 
+                                         int width, int height) {
+    // x -> [-1, 0, 1] 
+    // y -> [0, height - 1]
+
+    // -1 to shift the range to [-1, 0, 1]
+    int x = threadIdx.x - 1 + blockIdx.x * blockDim.x; 
+    int y = threadIdx.y + blockIdx.y * blockDim.y;
+
+    // Bounds check (ensures within valid row indices)
+    if (y >= height) return;
+
+    // Computes the column index of the affected pixel
+    int seamIdx = seamIndices[y]; 
+    int updatedCol = seamIdx + x; 
+
+    // Ensures the updated pixel is within bounds
+    if (updatedCol < 1 || updatedCol >= width - 1) return;
+
+    // Converts to padded image coordinates
+    int paddedY = y + 1; 
+    int paddedWidth = width + 2;
+    int paddedIdx = paddedY * paddedWidth + updatedCol;
+
+    // Gets indices for the 3x3 neighborhood needed for Sobel filter
+    int topIdx = paddedIdx - paddedWidth;   
+    int midIdx = paddedIdx;                 
+    int lowIdx = paddedIdx + paddedWidth;  
+
+    // SobelX calculation
+    float sobelValX = fabsf(
+    -grayImg[topIdx - 1] - 2 * grayImg[midIdx - 1] - grayImg[lowIdx - 1] +
+    grayImg[topIdx + 1] + 2 * grayImg[midIdx + 1] + grayImg[lowIdx + 1]
+    );
+
+    // SobelY calculation
+    float sobelValY = fabsf(
+    -grayImg[topIdx - 1] - 2 * grayImg[topIdx] - grayImg[topIdx + 1] +
+    grayImg[lowIdx - 1] + 2 * grayImg[lowIdx] + grayImg[lowIdx + 1]
+    );
+
+    // Computes energy
+    float newEnergy = sobelValX + sobelValY;
+
+    // Computes index in the non-padded outputs
+    int outIdx = y * width + updatedCol;
+    
+    // Modifies maps
+    sobelX[outIdx] = sobelValX;
+    sobelY[outIdx] = sobelValY;
+    energyMap[outIdx] = newEnergy;
 }
