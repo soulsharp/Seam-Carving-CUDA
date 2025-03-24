@@ -27,7 +27,7 @@ extern "C" __global__ void Rgb2GrayWithPadding(unsigned char* img, unsigned char
     unsigned char blue = img[idx + 2];
 
     // calculates grayscale value based on RGB values for a pixel
-    float grayVal = 0.2989f * red + 0.5870f * green + 0.1140f * blue;
+    float grayVal = 0.2125f * red + 0.7154f * green + 0.0721f * blue;
 
     // Writes the grayscale value back
     grayImg[y * paddedWidth + x] = static_cast<unsigned char>(grayVal);
@@ -62,7 +62,7 @@ extern "C" __global__ void SobelHorizontal(unsigned char* grayImg, float* sobelX
 }
 
 // This kernel applies the sobel filter on a grayscale image to detect gradients in the Y-direction
-extern "C" __global__ void SobelVertical(unsigned char* grayImg, float* sobel_y, int width, int height) {
+extern "C" __global__ void SobelVertical(unsigned char* grayImg, float* sobelY, int width, int height) {
 
     // sobel_y -> height x width
     // grayImg -> (height + 2) x (width + 2)
@@ -86,19 +86,19 @@ extern "C" __global__ void SobelVertical(unsigned char* grayImg, float* sobel_y,
 
     // Accessing mid idx of every row involved in the Sobel operation
     int grayTopIdx = (paddedY - 1) * paddedWidth + paddedX;
+    int grayMidIdx = paddedY * paddedWidth + paddedX;
     int grayLowIdx = (paddedY + 1) * paddedWidth + paddedX;
     
     // The contribution of the middle column is 0 but is included for readability
-    float topVal = -grayImg[grayTopIdx - 1] + 0 + grayImg[grayTopIdx];
-    float mid_val = -2 * grayImg[grayLowIdx - 1] + 0 + 2 * grayImg[grayLowIdx];
-    float lowVal = -grayImg[grayLowIdx - 1] + 0 + grayImg[grayLowIdx];
+    float topVal = -grayImg[grayTopIdx - 1] + 0 + grayImg[grayTopIdx + 1];
+    float mid_val = -2 * grayImg[grayMidIdx - 1] + 0 + 2 * grayImg[grayMidIdx + 1];
+    float lowVal = -grayImg[grayLowIdx - 1] + 0 + grayImg[grayLowIdx + 1];
 
     // Calculates sobelVal for idx
-    float sobelVal = fabsf(topVal + mid_val + lowVal);
-    sobel_y[idx] = abs(sobelVal);
+    sobelY[idx] = fabsf(topVal + mid_val + lowVal);
 }
 
-extern "C" __global__ void EnergyMapBackward(float* sobelX, float* sobel_y, float* energyMap, int width, int height){
+extern "C" __global__ void EnergyMapBackward(float* sobelX, float* sobelY, float* energyMap, int width, int height){
     // EnergyMap is just an elementwise sum of sobelX and sobel_y
     int x = threadIdx.x + blockDim.x * blockIdx.x;
     int y = threadIdx.y + blockDim.y * blockIdx.y;
@@ -109,7 +109,7 @@ extern "C" __global__ void EnergyMapBackward(float* sobelX, float* sobel_y, floa
     int idx = y * width + x;
 
     // Calculates EnergyValue corresponding to idx
-    float energyVal = sobelX[idx] + sobel_y[idx];
+    float energyVal = sobelX[idx] + sobelY[idx];
     energyMap[idx] = energyVal;
 }
 
@@ -153,40 +153,68 @@ extern "C" __global__ void cumulativeMapBackward(float* energyMap, float* cumula
     int tid = threadIdx.x + blockDim.x * blockIdx.x;
 
     // Checks if the thread accesses an out of bounds index
-    if(tid >= imageWidth) return;
+    if(tid >= 1024) return;
 
     // Starts computation from row no 2
     for(int rowIdx = 1; rowIdx < imageHeight; ++rowIdx){
-      int prevRowStartIdx = (rowIdx - 1) * imageWidth;
-      int currentRowStartIdx = rowIdx * imageWidth;
-      int elementAbove = prevRowStartIdx + tid;
-      int currentElement = currentRowStartIdx + tid;
-      int energyToAdd = 0.0;
+      for(int pixelIdx = tid; pixelIdx < imageWidth; pixelIdx += 1024){
+        int prevRowStartIdx = (rowIdx - 1) * imageWidth;
+        int currentRowStartIdx = rowIdx * imageWidth;
+        int elementAbove = prevRowStartIdx + pixelIdx;
+        int currentElement = currentRowStartIdx + pixelIdx;
+        int energyToAdd = 0.0;
 
-      // At the leftmost position
-      if(tid % imageWidth == 0){
-        energyToAdd = fminf(cumulativeEnergyMap[elementAbove], cumulativeEnergyMap[elementAbove + 1]);
-      }
+        // At the leftmost position
+        if(pixelIdx % imageWidth == 0){
+            energyToAdd = fminf(cumulativeEnergyMap[elementAbove], cumulativeEnergyMap[elementAbove + 1]);
+        }
 
-      // At the rightmost position
-      else if((tid + 1) % imageWidth == 0){
-        energyToAdd = fminf(cumulativeEnergyMap[elementAbove], cumulativeEnergyMap[elementAbove - 1]);
-      }
+        // At the rightmost position
+        else if((pixelIdx + 1) % imageWidth == 0){
+            energyToAdd = fminf(cumulativeEnergyMap[elementAbove], cumulativeEnergyMap[elementAbove - 1]);
+        }
 
-      // Remaining positions
-      else{
-        int temp = fminf(cumulativeEnergyMap[elementAbove], cumulativeEnergyMap[elementAbove + 1]);
-        energyToAdd = fminf(temp, cumulativeEnergyMap[elementAbove - 1]);
-      }
+        // Remaining positions
+        else{
+            int temp = fminf(cumulativeEnergyMap[elementAbove], cumulativeEnergyMap[elementAbove + 1]);
+            energyToAdd = fminf(temp, cumulativeEnergyMap[elementAbove - 1]);
+        }
 
-      cumulativeEnergyMap[currentElement] = energyMap[currentElement] + energyToAdd;
-
-      __syncthreads();
+        cumulativeEnergyMap[currentElement] = energyMap[currentElement] + energyToAdd;
+     }
+     __syncthreads();
     }
 }
 
+extern "C" __global__ void removeVerticalSeam(int* seamIndices, unsigned char* gray, unsigned char* grayNew,
+                                            int energyMapWidth, int energyMapHeight){
+    
+    int tid = threadIdx.x + blockIdx.x * blockDim.x;
+
+    // Threads also handle the padding region
+    if (tid >= ((energyMapHeight + 2) * (energyMapWidth + 1))) return;
+    
+    // Row, Col handled by the present thread
+    int rowIdx = tid / (energyMapWidth + 1);
+    int colIdx = tid % (energyMapWidth + 1);
+    
+    int seamCol = seamIndices[rowIdx];
+
+    // Amount by which pixels from the old image have to be shifted in the new image
+    int amountLeftShift; 
+    if (colIdx < seamCol){
+        amountLeftShift = rowIdx;
+    }
+    else{
+        amountLeftShift = rowIdx + 1;
+    }
+
+    grayNew[tid] = gray[tid + amountLeftShift];
+} 
+
+
 extern "C" __global__ void removeVerticalSeamAndInsertPadding(int* seamIndices, unsigned char* gray, unsigned char* grayNew,
-                                                            unsigned char* grayTemp, int energyMapWidth, int energyMapHeight) {
+                                                             int energyMapWidth, int energyMapHeight) {
     int x = threadIdx.x + blockIdx.x * blockDim.x;
     int y = threadIdx.y + blockIdx.y * blockDim.y;
 
@@ -200,8 +228,7 @@ extern "C" __global__ void removeVerticalSeamAndInsertPadding(int* seamIndices, 
 
     // Sets padding outside the actual content region to 0
     if (x == 0 || x == energyMapWidth || y == 0 || y == energyMapHeight + 1) {
-        grayNew[grayNewIdx] = 0.0;
-        grayTemp[grayNewIdx] = 0.0;
+        grayNew[grayNewIdx] = 0;
         return;
     }
 
@@ -212,14 +239,33 @@ extern "C" __global__ void removeVerticalSeamAndInsertPadding(int* seamIndices, 
     int grayOldIdx = y * (energyMapWidth + 2) + x;
 
     // Pixels before the seam pixel remain the same, pixels after get shifted to the left by 1
-    if (x <= k) {
+    if (x < k) {
         grayNew[grayNewIdx] = gray[grayOldIdx];
-        grayTemp[grayNewIdx] = gray[grayOldIdx];
     }
     else {
         grayNew[grayNewIdx] = gray[grayOldIdx + 1];
-        grayTemp[grayNewIdx] = gray[grayOldIdx + 1];
+
     }
+}
+
+extern "C" __global__ void removeSeamRGB(unsigned char* red, unsigned char* green, unsigned char* blue,
+                                        unsigned char* redNew, unsigned char* greenNew, unsigned char* blueNew, 
+                                        int* seamIndices, int width, int height) {
+
+    int y = threadIdx.y + blockIdx.y * blockDim.y; 
+    int x = threadIdx.x + blockIdx.x * blockDim.x;  
+
+    // Bounds check
+    if (y >= height || x >= width - 1) return;
+
+    int k = seamIndices[y];  
+    if (x < k) return;       
+
+    // Shift pixels left
+    int idx = y * width + x;
+    redNew[idx] = red[idx + 1];
+    greenNew[idx] = green[idx + 1];
+    blueNew[idx] = blue[idx + 1];
 }
 
 extern "C" __global__ void updateEnergyMap(int* seamIndices, unsigned char* grayImg, 
@@ -229,7 +275,7 @@ extern "C" __global__ void updateEnergyMap(int* seamIndices, unsigned char* gray
     // y -> [0, height - 1]
 
     // -1 to shift the range to [-1, 0, 1]
-    int x = threadIdx.x - 1 + blockIdx.x * blockDim.x; 
+    int x = threadIdx.x + blockIdx.x * blockDim.x; 
     int y = threadIdx.y + blockIdx.y * blockDim.y;
 
     // Bounds check (ensures within valid row indices)
