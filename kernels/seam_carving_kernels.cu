@@ -134,10 +134,15 @@ extern "C" __global__ void findMinInThreadBlock(float* inputRow, int* minIndices
     for (int s = blockDim.x / 2; s > 0; s >>= 1) {
         if (tid < s) {
             int right = tid + s;
-            if (right < blockDim.x && minValuesShared[right] < minValuesShared[tid]) {
+            
+            // If two or more indices have the same smallest number in a tb,the index of the leftmost is stored 
+            if (right < blockDim.x && 
+                (minValuesShared[right] < minValuesShared[tid] || 
+                (minValuesShared[right] == minValuesShared[tid] && minIndicesShared[right] < minIndicesShared[tid]))) 
+            {
                 minValuesShared[tid] = minValuesShared[right];
                 minIndicesShared[tid] = minIndicesShared[right];
-            }
+            }            
         }
         __syncthreads();
     }
@@ -187,17 +192,17 @@ extern "C" __global__ void cumulativeMapBackward(float* energyMap, float* cumula
 }
 
 extern "C" __global__ void removeVerticalSeam(int* seamIndices, unsigned char* gray, unsigned char* grayNew,
-                                            int energyMapWidth, int energyMapHeight){
-    
+    int energyMapWidth, int energyMapHeight){
+
     int tid = threadIdx.x + blockIdx.x * blockDim.x;
 
     // Threads also handle the padding region
     if (tid >= ((energyMapHeight + 2) * (energyMapWidth + 1))) return;
-    
+
     // Row, Col handled by the present thread
     int rowIdx = tid / (energyMapWidth + 1);
     int colIdx = tid % (energyMapWidth + 1);
-    
+
     int seamCol = seamIndices[rowIdx];
 
     // Amount by which pixels from the old image have to be shifted in the new image
@@ -210,63 +215,66 @@ extern "C" __global__ void removeVerticalSeam(int* seamIndices, unsigned char* g
     }
 
     grayNew[tid] = gray[tid + amountLeftShift];
-} 
-
-
-extern "C" __global__ void removeVerticalSeamAndInsertPadding(int* seamIndices, unsigned char* gray, unsigned char* grayNew,
-                                                             int energyMapWidth, int energyMapHeight) {
-    int x = threadIdx.x + blockIdx.x * blockDim.x;
-    int y = threadIdx.y + blockIdx.y * blockDim.y;
-
-    // Bounds check
-    if (x >= energyMapWidth + 1 || y >= energyMapHeight + 2) {
-        return;
     }
 
-    // Index in grayNew where this thread writes
-    int grayNewIdx = y * (energyMapWidth + 1) + x;
 
-    // Sets padding outside the actual content region to 0
-    if (x == 0 || x == energyMapWidth || y == 0 || y == energyMapHeight + 1) {
-        grayNew[grayNewIdx] = 0;
-        return;
+extern "C" __global__ void removeVerticalSeamMaps(int* seamIndices, float* energyMap, float* energyMapNew,
+                                                  float* sobelX, float* sobelXNew, float* sobelY, float* sobelYNew,
+                                                  int energyMapWidth, int energyMapHeight){
+
+    int tid = threadIdx.x + blockIdx.x * blockDim.x;
+        // Threads also handle the padding region
+    if (tid >= (energyMapHeight * (energyMapWidth - 1))) return;
+
+    // Row, Col handled by the present thread
+    int rowIdx = tid / (energyMapWidth - 1);
+    int colIdx = tid % (energyMapWidth - 1);
+    
+    // Seam indices is of the shape energyMapHeight + 2
+    int seamCol = seamIndices[rowIdx + 1];
+
+    // Amount by which pixels from the old image have to be shifted in the new image
+    int amountLeftShift; 
+    if (colIdx < seamCol){
+        amountLeftShift = rowIdx;
+    }
+    else{
+        amountLeftShift = rowIdx + 1;
     }
 
-    // Gets seam index for the current row (adjusted for padding)
-    int k = seamIndices[y - 1];
-
-    // Computes the corresponding index in gray
-    int grayOldIdx = y * (energyMapWidth + 2) + x;
-
-    // Pixels before the seam pixel remain the same, pixels after get shifted to the left by 1
-    if (x < k) {
-        grayNew[grayNewIdx] = gray[grayOldIdx];
-    }
-    else {
-        grayNew[grayNewIdx] = gray[grayOldIdx + 1];
-
-    }
+    energyMapNew[tid] = energyMap[tid + amountLeftShift];
+    sobelXNew[tid] = sobelX[tid + amountLeftShift];
+    sobelYNew[tid] = sobelY[tid + amountLeftShift];
 }
 
 extern "C" __global__ void removeSeamRGB(unsigned char* red, unsigned char* green, unsigned char* blue,
                                         unsigned char* redNew, unsigned char* greenNew, unsigned char* blueNew, 
                                         int* seamIndices, int width, int height) {
 
-    int y = threadIdx.y + blockIdx.y * blockDim.y; 
-    int x = threadIdx.x + blockIdx.x * blockDim.x;  
+    int tid = threadIdx.x + blockIdx.x * blockDim.x;
 
-    // Bounds check
-    if (y >= height || x >= width - 1) return;
+    if (tid >= (height * (width - 1))) return;
 
-    int k = seamIndices[y];  
-    if (x < k) return;       
+    // Row, Col handled by the present thread
+    int rowIdx = tid / (width - 1);
+    int colIdx = tid % (width - 1);
 
-    // Shift pixels left
-    int idx = y * width + x;
-    redNew[idx] = red[idx + 1];
-    greenNew[idx] = green[idx + 1];
-    blueNew[idx] = blue[idx + 1];
-}
+    // Seam indices is of the shape energyMapHeight + 2
+    int seamCol = seamIndices[rowIdx + 1];
+
+    // Amount by which pixels from the old image have to be shifted in the new image
+    int amountLeftShift; 
+    if (colIdx < seamCol){
+        amountLeftShift = rowIdx;
+    }
+    else{
+        amountLeftShift = rowIdx + 1;
+    }
+
+    redNew[tid] = red[tid + amountLeftShift];
+    greenNew[tid] = green[tid + amountLeftShift];
+    blueNew[tid] = blue[tid + amountLeftShift];
+    }
 
 extern "C" __global__ void updateEnergyMap(int* seamIndices, unsigned char* grayImg, 
                                          float* sobelX, float* sobelY, float* energyMap, 
