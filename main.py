@@ -1,6 +1,7 @@
 import pycuda.driver as cuda
 import numpy as np
 import cv2 as cv
+from tqdm import tqdm
 
 from utils.utils import (
     parse_arguments,
@@ -12,103 +13,82 @@ from utils.utils import (
     remove_seam,
     update_energy_map,
     remove_seam_from_RGB,
-    _get_backward_seam,
+    save_image,
 )
+
+def process_seams(kernels, buffers, device_buffers, image_width, image_height, target_width, seam_buffer, pbar):
+    """Removes seams iteratively until the image reaches the target width."""
+    counter = 0
+
+    while image_width > target_width:
+        # Calculates cumulative energy map and finds the minimum energy seam
+        find_seam(kernels, buffers, seam_buffer, device_buffers, image_width, image_height)
+
+        # Removes seam from the gray image and energy, sobel maps
+        remove_seam(kernels, device_buffers, image_width, image_height)
+
+        # Removes seam from R, G, B channels
+        remove_seam_from_RGB(kernels, device_buffers, image_width, image_height)
+        image_width -= 1
+
+        # Updates the energy and sobel maps 
+        update_energy_map(kernels, device_buffers, image_width, image_height)
+
+        pbar.update(1)
+
+    return image_width
+
+def extract_and_transpose_channels(device_buffers, image_height, image_width, flag_rgb=True):
+    """Extracts R, G, B channels from device buffers and transposes them."""
+    channels = {color: np.zeros((image_height, image_width), dtype=np.uint8) for color in ["R", "G", "B"]}
+    for color in channels:
+        cuda.memcpy_dtoh(channels[color], device_buffers[color])
+        channels[color] = np.transpose(channels[color], (1, 0))
+    
+    if flag_rgb:
+        return np.ascontiguousarray(np.stack((channels["R"], channels["G"], channels["B"]), axis=-1))
+    
+    else:
+        return np.ascontiguousarray(np.stack((channels["B"], channels["G"], channels["R"]), axis=-1))
+
 
 def main():
     args = parse_arguments()
     img, image_height, image_width = load_image(args.img_path)
-    print(type(img))
-
     kernels = initialize_cuda_kernels()
     buffers, device_buffers = allocate_memory(image_height, image_width, img)
-    seam = np.zeros(image_height + 2, dtype=np.int32)
-    energy_output = np.zeros(image_height * (image_width - 1), dtype=np.float32)
+    seam_vertical = np.zeros(image_height + 2, dtype=np.int32)
+    seam_horizontal = np.zeros(args.resized_width + 2, dtype=np.int32)
     
-    # If resized_width < image_width, remove vertical seams, else, add them
-    if args.resized_width < image_width:
-        run_kernels(kernels, device_buffers, image_width, image_height)
-        counter = 0
-
-        # Shifts
-        shifted_gray_image = np.zeros((image_height + 2, image_width + 2), dtype=np.uint8)
-        cuda.memcpy_dtoh(shifted_gray_image, device_buffers["gray_image_new"])
-        seam_element = np.array([2000], dtype=np.int32)
-        seam_dummy = np.broadcast_to(seam_element, (image_height + 2,))
-        cuda.memcpy_htod(device_buffers["seam_indices"], np.ascontiguousarray(seam_dummy))
-
-        cuda.memcpy_dtoh(shifted_gray_image, device_buffers["gray_image"])
-
-        flag = False
-        while(image_width > args.resized_width):
-                find_seam(kernels, buffers, seam, device_buffers, image_width, image_height)
-
-                remove_seam(kernels, device_buffers, image_width, image_height)
-
-
-                remove_seam_from_RGB(kernels, device_buffers, image_width, image_height)
-
-                image_width -= 1
- 
-                # Update energy map function takes the image_width reduced by 1 
-                update_energy_map(kernels, device_buffers, image_width, image_height, flag)
-
-                flag = not flag
-                counter += 1
-                if(counter % 5 == 0):
-                    print(f"Iteration {counter}")
-                
-                # print(shifted_gray_image)
-                
-                
-    # elif args.resized_width > image_width:
-    #     print("Image upsizing is not supported at the moment.Exiting...")
-    #     return
-
-    # # If resized_height > image_height, remove vertical seams from transpose of the image, else, add them
-    # if args.resized_height < image_height:
-    #     pass
-    # elif args.resized_height > image_height:
-    #     print("Image upsizing is not supported at the moment.Exiting...")
-    #     return
+    # Tracks progress of the algorithm
+    total_seams_width = max(image_width - args.resized_width, 0)
+    total_seams_height = max(image_height - args.resized_height, 0)
     
-    # # run_kernels(kernels, device_buffers, image_width, image_height)
-    # # a = np.zeros_like(buffers["energy_map"])
-    # # cuda.memcpy_dtoh(a, device_buffers["energy_map"])
-    # # find_seam(kernels, buffers, device_buffers, image_width, image_height)
-    # # remove_seam(kernels, device_buffers, image_width, image_height)
-    # # update_energy_map(kernels, device_buffers, image_width, image_height)
+    with tqdm(total=total_seams_width, desc="Vertical Seam Removal Progress", unit="seam") as pbar_vertical:
+        if args.resized_width < image_width:
+            run_kernels(kernels, device_buffers, image_width, image_height)
+            image_width = process_seams(kernels, buffers, device_buffers, image_width, image_height, args.resized_width, seam_vertical, pbar_vertical)
+            print("Removed all vertical seams...")
+        elif args.resized_width > image_width:
+            print("Image upsizing is not supported at the moment. Exiting...")
+            return
+        
+    with tqdm(total=total_seams_height, desc="Horizontal Seam Removal Progress", unit="seam") as pbar_horizontal:
+        if args.resized_height < image_height:
+            img_transposed = extract_and_transpose_channels(device_buffers, image_height, image_width)
+            image_height, image_width = image_width, image_height
+            buffers, device_buffers = allocate_memory(image_height, image_width, img_transposed)
+            run_kernels(kernels, device_buffers, image_width, image_height)
+            image_width = process_seams(kernels, buffers, device_buffers, image_width, image_height, args.resized_height, seam_horizontal, pbar_horizontal)
+            print("Removed all horizontal semas...")
+        elif args.resized_height > image_height:
+            print("Image upsizing is not supported at the moment. Exiting...")
+            return
 
-    # R_out = np.zeros((img.shape[0], img.shape[1]), dtype=np.uint8)
-    # G_out = np.zeros((img.shape[0], img.shape[1]), dtype=np.uint8)
-    # B_out = np.zeros((img.shape[0], img.shape[1]), dtype=np.uint8)
-    gray_out = np.zeros((img.shape[0], img.shape[1]), dtype=np.uint8)
-
-
-    # cuda.memcpy_dtoh(shifted_gray_image, device_buffers["gray_image"])
-    # print(gray_out)
-    # cuda.memcpy_dtoh(R_out, device_buffers["R_new"])
-    # cuda.memcpy_dtoh(G_out, device_buffers["G_new"])
-    # cuda.memcpy_dtoh(B_out, device_buffers["B_new"])
-
-    # print(np.unique(img[:, :, 0] == R_out, return_counts=True))
-    # print(np.unique(img[:, :, 0] == G_out, return_counts=True))
-    # print(np.unique(img[:, :, 0] == B_out, return_counts=True))
-    
-    inter_red = np.zeros((image_height, image_width), dtype=np.uint8)
-    inter_green = np.zeros((image_height, image_width), dtype=np.uint8)
-    inter_blue = np.zeros((image_height, image_width), dtype=np.uint8) 
-
-    cuda.memcpy_dtoh(inter_red, device_buffers["R"])
-    cuda.memcpy_dtoh(inter_green, device_buffers["G"])
-    cuda.memcpy_dtoh(inter_blue, device_buffers["B"])
-
-    img_out = np.stack((inter_blue, inter_green, inter_red), axis=-1)
-
-    # print(img_out[: args.resized_height, : args.resized_width].shape)
-
+    img_out = extract_and_transpose_channels(device_buffers, image_height, image_width, flag_rgb=False)
+    save_image(img_out, args.img_path)
     cv.imwrite("output.jpg", img_out)
-    print("Output shape: ", img_out.shape)
-    
+    print("Output shape:", img_out.shape)
+
 if __name__ == "__main__":
     main()

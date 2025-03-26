@@ -18,9 +18,9 @@ def parse_arguments():
         os.getcwd(), "examples", "images", "joel-filipe-QwoNAhbmLLo-unsplash.jpg"
     )
     
-    parser.add_argument("--img_path", type=str, default=default_image_path, help="Path to image")
-    parser.add_argument("--resized_width", type=int, default=400, help="Resized image width")
-    parser.add_argument("--resized_height", type=int, default=400, help="Resized image height")
+    parser.add_argument("--img_path", type=str, help="Path to image")
+    parser.add_argument("--resized_width", type=int, help="Resized image width")
+    parser.add_argument("--resized_height", type=int, help="Resized image height")
 
     return parser.parse_args()
 
@@ -70,8 +70,12 @@ def load_image(image_path):
     return img, image_height, image_width
 
 
-def save_image(image_path, image):
-    cv.imwrite(image_path, image)
+def save_image(image, image_path):
+    """Takes in an image and saves it"""
+    suffix = image_path.split('\\')[-1]
+    suffix = "Resized_" + suffix
+    save_path = os.path.join(os.getcwd(), "examples", "results", suffix)
+    cv.imwrite(save_path, image)
 
 
 def get_cuda_kernels_src_file():
@@ -259,7 +263,6 @@ def remove_seam(kernels, device_buffers, image_width, image_height):
     cuda.Context.synchronize()
     # print(f"Seam removal executed in {time.time() - start_time:.4f}s")
     
-    print("Inside modify seam")
     # Swaps buffers to make sure that gray_image is always up to date
     device_buffers["gray_image"], device_buffers["gray_image_new"] =  (
         device_buffers["gray_image_new"], device_buffers["gray_image"]
@@ -287,14 +290,9 @@ def remove_seam(kernels, device_buffers, image_width, image_height):
         device_buffers["sobel_y_new"], device_buffers["sobel_y"]
     )
 
-def update_energy_map(kernels, device_buffers, image_width, image_height, flag):
+def update_energy_map(kernels, device_buffers, image_width, image_height):
     """Updates the energy map after removal of a seam"""
     start_time = time.time()
-    if flag:
-        gray = device_buffers["gray_image"]
-    else:
-        gray = device_buffers["gray_image_new"]
-
     kernels["update_energy_map"](device_buffers["seam_indices"], device_buffers["gray_image"],
                            device_buffers["sobel_x"], device_buffers["sobel_y"], device_buffers["energy_map"], 
                            np.int32(image_width), np.int32(image_height),
@@ -350,6 +348,3 @@ def _get_backward_seam(energy: np.ndarray) -> np.ndarray:
     print("Seam CPU: \n", seam)
 
     return cost[1:-1]
-
-
-    
