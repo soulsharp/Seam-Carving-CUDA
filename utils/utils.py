@@ -69,6 +69,7 @@ def load_image(image_path):
 
     return img, image_height, image_width
 
+
 def save_image(image_path, image):
     cv.imwrite(image_path, image)
 
@@ -112,8 +113,6 @@ def allocate_memory(image_height, image_width, img):
         R = np.ascontiguousarray(img[:, :, 0])
         G = np.ascontiguousarray(img[:, :, 1])
         B = np.ascontiguousarray(img[:, :, 2])
-
-        print(type(R[0, 0]))
         
         # Defines host arrays
         buffers = {
@@ -205,9 +204,6 @@ def find_seam(kernels, buffers, seam, device_buffers, image_width, image_height)
     cuda.memcpy_dtoh(buffers["energy_map"], device_buffers["energy_map"])
     buffers["cumulative_map"][0, :image_width] = buffers["energy_map"][0, :image_width]
     cuda.memcpy_htod(device_buffers["cumulative_map"], buffers["cumulative_map"])
-    
-    dummy_energy = np.zeros((image_height, image_width), dtype=np.float32)
-    cuda.memcpy_dtoh(dummy_energy, device_buffers["energy_map"])
 
     # Gets the cumulative energy map
     start_time = time.time()
@@ -225,7 +221,6 @@ def find_seam(kernels, buffers, seam, device_buffers, image_width, image_height)
     last_active_row_idx = (image_height - 1) * image_width
     buffers["min_row"] = cumulative_map_updated.ravel()[last_active_row_idx : last_active_row_idx + image_width]
 
-    
     cuda.memcpy_htod(device_buffers["min_row"], buffers["min_row"])
 
     # Finds backtracking index in the last row of the cumulative energy map
@@ -237,9 +232,12 @@ def find_seam(kernels, buffers, seam, device_buffers, image_width, image_height)
     # print(f"Find min kernel executed in {time.time() - start_time:.4f}s")
 
     cuda.memcpy_dtoh(buffers["min_indices"], device_buffers["min_indices"])
+    
+    # Checks for bounds on min_indices
+    accept_map = buffers["min_indices"] < image_width
 
     # Gets the backtracking start index
-    min_idx = buffers["min_indices"][np.argmin(buffers["min_row"][buffers["min_indices"]])]
+    min_idx = buffers["min_indices"][np.argmin(buffers["min_row"][buffers["min_indices"][accept_map]])]
 
     # Seam indices of the shape image_height + 2 to make removing seam while preserving padding easier
     seam[1: image_height + 1] = get_backward_seam_from_idx(min_idx, cumulative_map_updated, image_height, image_width)
@@ -305,9 +303,6 @@ def update_energy_map(kernels, device_buffers, image_width, image_height, flag):
     # print(f"Update energy map executed in {time.time() - start_time:.4f}s")
 
 def remove_seam_from_RGB(kernels, device_buffers, image_width, image_height):
-    threadsPerBlock = (32, 32, 1) 
-    numBlocks = ((image_width - 1 + 31) // 32, (image_height + 31) // 32)
-    
     start_time = time.time()
     kernels["remove_seam_RGB"](
         device_buffers["R"], device_buffers["G"], device_buffers["B"],
