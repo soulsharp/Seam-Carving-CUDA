@@ -38,12 +38,14 @@ def process_seams(kernels, buffers, device_buffers, image_width, image_height, t
 
     return image_width
 
-def extract_and_transpose_channels(device_buffers, image_height, image_width, flag_rgb=True):
+def extract_and_transpose_channels(device_buffers, image_height, image_width, flag_transpose=True, flag_rgb=True):
     """Extracts R, G, B channels from device buffers and transposes them."""
     channels = {color: np.zeros((image_height, image_width), dtype=np.uint8) for color in ["R", "G", "B"]}
     for color in channels:
         cuda.memcpy_dtoh(channels[color], device_buffers[color])
-        channels[color] = np.transpose(channels[color], (1, 0))
+        
+        if flag_transpose:
+            channels[color] = np.transpose(channels[color], (1, 0))
     
     if flag_rgb:
         return np.ascontiguousarray(np.stack((channels["R"], channels["G"], channels["B"]), axis=-1))
@@ -74,21 +76,27 @@ def main():
             return
         
     with tqdm(total=total_seams_height, desc="Horizontal Seam Removal Progress", unit="seam") as pbar_horizontal:
+        print(args.resized_height, image_height)
         if args.resized_height < image_height:
             img_transposed = extract_and_transpose_channels(device_buffers, image_height, image_width)
             image_height, image_width = image_width, image_height
+            print(image_height, image_width)
             buffers, device_buffers = allocate_memory(image_height, image_width, img_transposed)
             run_kernels(kernels, device_buffers, image_width, image_height)
             image_width = process_seams(kernels, buffers, device_buffers, image_width, image_height, args.resized_height, seam_horizontal, pbar_horizontal)
-            print("Removed all horizontal semas...")
+            print("Removed all horizontal seams...")
         elif args.resized_height > image_height:
             print("Image upsizing is not supported at the moment. Exiting...")
             return
+        
+    if(args.resized_height == image_height):
+        flag_transpose = False
+    else:
+        flag_transpose = True
 
-    img_out = extract_and_transpose_channels(device_buffers, image_height, image_width, flag_rgb=False)
+    img_out = extract_and_transpose_channels(device_buffers, image_height, image_width, flag_transpose=flag_transpose, flag_rgb=False)
     save_image(img_out, args.img_path)
-    cv.imwrite("output.jpg", img_out)
-    print("Output shape:", img_out.shape)
+    print("Resized image shape:", img_out.shape)
 
 if __name__ == "__main__":
     main()

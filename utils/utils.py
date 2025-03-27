@@ -60,13 +60,17 @@ def get_backward_seam_from_idx(backtrack_idx, energy, height, width):
 def load_image(image_path):
     img = cv.imread(image_path)
     img = cv.cvtColor(img, cv.COLOR_BGR2RGB)
+    
+    if img is None:
+        raise ValueError(f"Failed to load image from {image_path}")
 
     if (img.ndim == 3):
         image_height, image_width, _ = img.shape
-
     elif (img.ndim == 2):
         image_height, image_width = img.shape
-
+    else:
+        raise ValueError(f"Expected image dimension to be 2 or 3, got {img.ndim}")
+    
     return img, image_height, image_width
 
 
