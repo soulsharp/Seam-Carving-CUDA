@@ -63,7 +63,7 @@ This demonstrates a significant speedup using GPU acceleration(around 4.5x - 8x)
 
 ### Original Images: 
 
-![Bird on a rock on a lake](results/images/manas-manikoth-t3BPY1BCAAc-unsplash_resized.jpg)  
+![Bird on a rock on a lake](examples/images/paolo-nicolello-pifFRCiSK3E-unsplash.jpg)  
 
 Photo by <a href="https://unsplash.com/@paul_nic?utm_content=creditCopyText&utm_medium=referral&utm_source=unsplash">Paolo Nicolello</a> on <a href="https://unsplash.com/photos/selective-focus-photo-of-mandarin-duck-pifFRCiSK3E?utm_content=creditCopyText&utm_medium=referral&utm_source=unsplash">Unsplash</a>
       
