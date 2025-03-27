@@ -67,10 +67,6 @@ This demonstrates a significant speedup using GPU acceleration(around 4.5x - 8x)
 
 Photo by <a href="https://unsplash.com/@paul_nic?utm_content=creditCopyText&utm_medium=referral&utm_source=unsplash">Paolo Nicolello</a> on <a href="https://unsplash.com/photos/selective-focus-photo-of-mandarin-duck-pifFRCiSK3E?utm_content=creditCopyText&utm_medium=referral&utm_source=unsplash">Unsplash</a>
       
-      
-![Galaxy](examples/images/joel-filipe-QwoNAhbmLLo-unsplash.jpg)
-
-Photo by <a href="https://unsplash.com/@joelfilip?utm_content=creditCopyText&utm_medium=referral&utm_source=unsplash">Joel Filipe</a> on <a href="https://unsplash.com/photos/multicolored-abstract-painting-QwoNAhbmLLo?utm_content=creditCopyText&utm_medium=referral&utm_source=unsplash">Unsplash</a>
 
 ![Castle](examples/images/castle.jpg)
       
@@ -81,10 +77,6 @@ Photo by <a href="https://unsplash.com/@joelfilip?utm_content=creditCopyText&utm
 
 Width and Height reduced by 500 pixels
 
-![Resized Galaxy](examples/results/Resized_joel-filipe-QwoNAhbmLLo-unsplash.jpg)
-
-Width and Height reduced by 500 pixels
-
 ![Resized Castle](examples/results/Resized_castle.jpg)
 
 Width reduced by 200 pixels
@@ -92,10 +84,6 @@ Width reduced by 200 pixels
 ### Resized via cv2.resize:
 
 ![Resized Bird](examples/cv2_resize/cv2_resized_bird.jpg)
-
-Width and Height reduced by 500 pixels
-
-![Resized Galaxy](examples/cv2_resize/cv_resized_galaxy.jpg)
 
 Width and Height reduced by 500 pixels
 
