@@ -83,7 +83,7 @@ Width reduced by 200 pixels
 
 ### Resized via cv2.resize:
 
-![Resized Bird](examples/cv2_resize/cv2_resized_bird.jpg)
+![Resized Bird](examples/cv2_resize/cv_resized_bird.jpg)
 
 Width and Height reduced by 500 pixels
 
