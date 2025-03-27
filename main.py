@@ -76,7 +76,6 @@ def main():
             return
         
     with tqdm(total=total_seams_height, desc="Horizontal Seam Removal Progress", unit="seam") as pbar_horizontal:
-        print(args.resized_height, image_height)
         if args.resized_height < image_height:
             img_transposed = extract_and_transpose_channels(device_buffers, image_height, image_width)
             image_height, image_width = image_width, image_height

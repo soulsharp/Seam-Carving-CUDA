@@ -46,26 +46,62 @@ In the future, additional arguments pertaining to adding auxilliary image masks 
 
 The CPU-based [project](https://github.com/li-plus/seam-carving) mentioned earlier provides a benchmark for measuring the algorithm’s speed: resizing [castle.jpg](examples/images/castle.jpg) (407x600) by 200 pixels. Since our repository currently supports only downsizing, here’s a performance comparison for reducing the image’s width by 200 pixels (new size: 407×400).
 
-CPU-based implementation (Google Colab, server-grade CPU): ~8 minutes on average
+CPU-based implementation (Google Colab, server-grade CPU): ~1.7 seconds on average
+Our CUDA implementation (Google Colab, Tesla T4 GPU): ~0.38 seconds on average
 
-Our CUDA implementation (Google Colab, Tesla T4 GPU): ~9 seconds on average
+For reducing both the image height and width by 200 pixels:
 
-This demonstrates a significant speedup using GPU acceleration. Below, you’ll find a few results, including a standard cv2.resize for comparison to visualize distortions and content preservation.
+CPU-based implementation: ~2.9 seconds on average
+Our CUDA implementation: ~0.64 seconds on average
+
+For reducing image height by 500 pixels and image width by 500 pixels for this [Photo]() by <a href="https://unsplash.com/@paul_nic?utm_content=creditCopyText&utm_medium=referral&utm_source=unsplash">Paolo Nicolello</a> on <a href="https://unsplash.com/photos/selective-focus-photo-of-mandarin-duck-pifFRCiSK3E?utm_content=creditCopyText&utm_medium=referral&utm_source=unsplash">Unsplash</a> :
+
+CPU-based implementation: ~370 seconds on average
+Our CUDA implementation: ~45 seconds on average
+      
+This demonstrates a significant speedup using GPU acceleration(around 4.5x - 8x). Below, you’ll find a few results, including a standard cv2.resize for comparison to visualize distortions and content preservation.
 
 ### Original Images: 
-![Monkey on a Ledge Original](results/images/manas-manikoth-t3BPY1BCAAc-unsplash_resized.jpg)  
 
-Photo by <a href="https://unsplash.com/@manasmanikoth?utm_content=creditCopyText&utm_medium=referral&utm_source=unsplash">Manas Manikoth</a> on <a href="https://unsplash.com/photos/a-monkey-sitting-on-a-ledge-t3BPY1BCAAc?utm_content=creditCopyText&utm_medium=referral&utm_source=unsplash">Unsplash</a>
-      
-![Scenery Original](results/images/philipp-neumann-DHijgFy-OkI-unsplash_resized.jpg)
+![Bird on a rock on a lake](results/images/manas-manikoth-t3BPY1BCAAc-unsplash_resized.jpg)  
 
- Photo by <a href="https://unsplash.com/@philneumn?utm_content=creditCopyText&utm_medium=referral&utm_source=unsplash">Philipp Neumann</a> on <a href="https://unsplash.com/photos/green-trees-near-lake-under-white-clouds-and-blue-sky-during-daytime-DHijgFy-OkI?utm_content=creditCopyText&utm_medium=referral&utm_source=unsplash">Unsplash</a>
+Photo by <a href="https://unsplash.com/@paul_nic?utm_content=creditCopyText&utm_medium=referral&utm_source=unsplash">Paolo Nicolello</a> on <a href="https://unsplash.com/photos/selective-focus-photo-of-mandarin-duck-pifFRCiSK3E?utm_content=creditCopyText&utm_medium=referral&utm_source=unsplash">Unsplash</a>
       
       
-### Artistic Outputs:
-![Monkey on a Ledge Artistic](results/slic_outputs/SLIC_Output_manas-manikoth-t3BPY1BCAAc-unsplash_resized.jpg)
+![Galaxy](examples/images/joel-filipe-QwoNAhbmLLo-unsplash.jpg)
 
-![Scenery Artistic](results/slic_outputs/SLIC_Output_philipp-neumann-DHijgFy-OkI-unsplash_resized.jpg)
+Photo by <a href="https://unsplash.com/@joelfilip?utm_content=creditCopyText&utm_medium=referral&utm_source=unsplash">Joel Filipe</a> on <a href="https://unsplash.com/photos/multicolored-abstract-painting-QwoNAhbmLLo?utm_content=creditCopyText&utm_medium=referral&utm_source=unsplash">Unsplash</a>
+
+![Castle](examples/images/castle.jpg)
+      
+
+### Resized via Seam Carving:
+
+![Resized Bird](examples/results/Resized_paolo-nicolello-pifFRCiSK3E-unsplash.jpg) 
+
+Width and Height reduced by 500 pixels
+
+![Resized Galaxy](examples/results/Resized_joel-filipe-QwoNAhbmLLo-unsplash.jpg)
+
+Width and Height reduced by 500 pixels
+
+![Resized Castle](examples/results/Resized_castle.jpg)
+
+Width reduced by 200 pixels
+
+### Resized via cv2.resize:
+
+![Resized Bird](examples/cv2_resize/cv2_resized_bird.jpg)
+
+Width and Height reduced by 500 pixels
+
+![Resized Galaxy](examples/cv2_resize/cv_resized_galaxy.jpg)
+
+Width and Height reduced by 500 pixels
+
+![Resized Castle](examples/cv2_resize/cv_resized_castle.jpg)
+
+Width reduced by 200 pixels
 
 ## Contributing
 
