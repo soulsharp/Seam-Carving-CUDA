@@ -66,30 +66,43 @@ This demonstrates a significant speedup using GPU acceleration(around 4.5x - 8x)
 ![Bird on a rock on a lake](examples/images/paolo-nicolello-pifFRCiSK3E-unsplash.jpg)  
 
 Photo by <a href="https://unsplash.com/@paul_nic?utm_content=creditCopyText&utm_medium=referral&utm_source=unsplash">Paolo Nicolello</a> on <a href="https://unsplash.com/photos/selective-focus-photo-of-mandarin-duck-pifFRCiSK3E?utm_content=creditCopyText&utm_medium=referral&utm_source=unsplash">Unsplash</a>
-      
 
 ![Castle](examples/images/castle.jpg)
       
 
-### Resized via Seam Carving:
+### Comparisons:
 
-![Resized Bird](examples/results/Resized_paolo-nicolello-pifFRCiSK3E-unsplash.jpg) 
+Comparisons of resizing the above original images via Seam Carving vs cv2.resize: 
 
-Width and Height reduced by 500 pixels
+Width reduced by 500 pixels:
 
-![Resized Castle](examples/results/Resized_castle.jpg)
+<!-- markdownlint-disable MD033 -->
 
-Width reduced by 200 pixels
+<p align="center">
+  <img src="examples/results/Resized_paolo-nicolello-pifFRCiSK3E-unsplash.jpg" alt="Resized by CUDA" width="45%" />
+  <img src="examples/cv2_resize/cv_resized_bird.jpg" alt="Resized by OpenCV" width="45%" />
+</p>
 
-### Resized via cv2.resize:
+<p align="center">
+  <em>Left: Resized using CUDA implementation &nbsp;|&nbsp; Right: Resized using OpenCV (cv2.resize)</em>
+</p>
 
-![Resized Bird](examples/cv2_resize/cv_resized_bird.jpg)
+<!-- markdownlint-disable MD033 -->
 
-Width and Height reduced by 500 pixels
+Width reduced by 200 pixels:
 
-![Resized Castle](examples/cv2_resize/cv_resized_castle.jpg)
+<!-- markdownlint-disable MD033 -->
 
-Width reduced by 200 pixels
+<p align="center">
+  <img src="examples/results/Resized_castle.jpg" alt="Resized by CUDA" width="45%" />
+  <img src="examples/cv2_resize/cv2_resized_castle.jpg" alt="Resized by OpenCV" width="45%" />
+</p>
+
+<p align="center">
+  <em>Left: Resized using CUDA implementation &nbsp;|&nbsp; Right: Resized using OpenCV (cv2.resize)</em>
+</p>
+
+<!-- markdownlint-disable MD033 -->
 
 ## Contributing
 
